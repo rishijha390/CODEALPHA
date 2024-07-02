@@ -1,1 +1,217 @@
 
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class AttendanceManagementSystem {
+    public static void main(String[] args) {
+        GUI gui = new GUI();
+        gui.display();
+    }
+}
+
+// Model
+class Attendance {
+    private int id;
+    private String studentName;
+    private String date;
+    private String status;
+
+    public Attendance() {}
+
+    public Attendance(String studentName, String date, String status) {
+        this.studentName = studentName;
+        this.date = date;
+        this.status = status;
+    }
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+
+    public String getStudentName() { return studentName; }
+    public void setStudentName(String studentName) { this.studentName = studentName; }
+
+    public String getDate() { return date; }
+    public void setDate(String date) { this.date = date; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+}
+
+// DAO (Data Access Object)
+class AttendanceDao {
+    private String jdbcURL = "jdbc:mysql://localhost:3306/attendance_db";
+    private String jdbcUsername = "root";
+    private String jdbcPassword = "password";
+
+    private static final String INSERT_ATTENDANCE_SQL = "INSERT INTO attendance (student_name, date, status) VALUES (?, ?, ?);";
+    private static final String SELECT_ALL_ATTENDANCE = "SELECT * FROM attendance";
+
+    protected Connection getConnection() {
+        Connection connection = null;
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            connection = DriverManager.getConnection(jdbcURL, jdbcUsername, jdbcPassword);
+        } catch (SQLException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return connection;
+    }
+
+    public void insertAttendance(Attendance attendance) throws SQLException {
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(INSERT_ATTENDANCE_SQL)) {
+            preparedStatement.setString(1, attendance.getStudentName());
+            preparedStatement.setString(2, attendance.getDate());
+            preparedStatement.setString(3, attendance.getStatus());
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            printSQLException(e);
+        }
+    }
+
+    public List<Attendance> selectAllAttendance() {
+        List<Attendance> attendanceList = new ArrayList<>();
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(SELECT_ALL_ATTENDANCE)) {
+            ResultSet rs = preparedStatement.executeQuery();
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String studentName = rs.getString("student_name");
+                String date = rs.getString("date");
+                String status = rs.getString("status");
+                Attendance attendance = new Attendance(studentName, date, status);
+                attendance.setId(id);
+                attendanceList.add(attendance);
+            }
+        } catch (SQLException e) {
+            printSQLException(e);
+        }
+        return attendanceList;
+    }
+
+    private void printSQLException(SQLException ex) {
+        for (Throwable e : ex) {
+            if (e instanceof SQLException) {
+                e.printStackTrace(System.err);
+                System.err.println("SQLState: " + ((SQLException) e).getSQLState());
+                System.err.println("Error Code: " + ((SQLException) e).getErrorCode());
+                System.err.println("Message: " + e.getMessage());
+                Throwable t = ex.getCause();
+                while (t != null) {
+                    System.out.println("Cause: " + t);
+                    t = t.getCause();
+                }
+            }
+        }
+    }
+}
+
+// Service
+class AttendanceService {
+    private AttendanceDao attendanceDao = new AttendanceDao();
+
+    public void addAttendance(Attendance attendance) {
+        try {
+            attendanceDao.insertAttendance(attendance);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<Attendance> getAllAttendance() {
+        return attendanceDao.selectAllAttendance();
+    }
+}
+
+// GUI
+class GUI {
+    private JFrame frame;
+    private JTextField studentNameField;
+    private JTextField dateField;
+    private JTextField statusField;
+    private JTable table;
+    private AttendanceService attendanceService;
+
+    public GUI() {
+        attendanceService = new AttendanceService();
+        initialize();
+    }
+
+    private void initialize() {
+        frame = new JFrame();
+        frame.setBounds(100, 100, 450, 300);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.getContentPane().setLayout(null);
+
+        JLabel lblStudentName = new JLabel("Student Name:");
+        lblStudentName.setBounds(10, 11, 100, 14);
+        frame.getContentPane().add(lblStudentName);
+
+        studentNameField = new JTextField();
+        studentNameField.setBounds(120, 8, 200, 20);
+        frame.getContentPane().add(studentNameField);
+        studentNameField.setColumns(10);
+
+        JLabel lblDate = new JLabel("Date:");
+        lblDate.setBounds(10, 42, 100, 14);
+        frame.getContentPane().add(lblDate);
+
+        dateField = new JTextField();
+        dateField.setBounds(120, 39, 200, 20);
+        frame.getContentPane().add(dateField);
+        dateField.setColumns(10);
+
+        JLabel lblStatus = new JLabel("Status:");
+        lblStatus.setBounds(10, 73, 100, 14);
+        frame.getContentPane().add(lblStatus);
+
+        statusField = new JTextField();
+        statusField.setBounds(120, 70, 200, 20);
+        frame.getContentPane().add(statusField);
+        statusField.setColumns(10);
+
+        JButton btnAddAttendance = new JButton("Add Attendance");
+        btnAddAttendance.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                String studentName = studentNameField.getText();
+                String date = dateField.getText();
+                String status = statusField.getText();
+                Attendance attendance = new Attendance(studentName, date, status);
+                attendanceService.addAttendance(attendance);
+                populateTable();
+            }
+        });
+        btnAddAttendance.setBounds(120, 101, 150, 23);
+        frame.getContentPane().add(btnAddAttendance);
+
+        JScrollPane scrollPane = new JScrollPane();
+        scrollPane.setBounds(10, 135, 414, 115);
+        frame.getContentPane().add(scrollPane);
+
+        table = new JTable();
+        scrollPane.setViewportView(table);
+        table.setModel(new DefaultTableModel(
+            new Object[][] {},
+            new String[] {"ID", "Student Name", "Date", "Status"}
+        ));
+        populateTable();
+    }
+
+    private void populateTable() {
+        DefaultTableModel model = (DefaultTableModel) table.getModel();
+        model.setRowCount(0);
+        List<Attendance> list = attendanceService.getAllAttendance();
+        for (Attendance attendance : list) {
+            model.addRow(new Object[]{attendance.getId(), attendance.getStudentName(), attendance.getDate(), attendance.getStatus()});
+        }
+    }
+
+    public void display() {
+        frame.setVisible(true);
+    }
+}
